@@ -27,7 +27,7 @@
     [self modifyMetadatas:^(NSMutableArray *metadatas) {
         
         NSInteger insertIndex = -1;
-        
+        // 如何修改 metadatas呢?
         for (int i = 0; i < metadatas.count; i++) {
             NSDictionary *otherRecordSessionMetadata = [metadatas objectAtIndex:i];
             if ([otherRecordSessionMetadata[SCRecordSessionIdentifierKey] isEqualToString:recordSession.identifier]) {

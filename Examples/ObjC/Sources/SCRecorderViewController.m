@@ -76,14 +76,21 @@
     _recorder.delegate = self;
     _recorder.autoSetVideoOrientation = NO; //YES causes bad orientation for video from camera roll
     
-    UIView *previewView = self.previewView;
-    _recorder.previewView = previewView;
+    // Record如何和Preview关联的呢?
     
+    UIView *previewView = self.previewView;
+    // 这里的： previewView 只是一个VideoView的承载的容器
+    _recorder.previewView = previewView;
+
+    // 底部的三个按钮
+    [self.recordView addGestureRecognizer:[[SCTouchDetector alloc] initWithTarget:self action:@selector(handleTouchDetected:)]];
     [self.retakeButton addTarget:self action:@selector(handleRetakeButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
     [self.stopButton addTarget:self action:@selector(handleStopButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+    
+    
 	[self.reverseCamera addTarget:self action:@selector(handleReverseCameraTapped:) forControlEvents:UIControlEventTouchUpInside];
     
-    [self.recordView addGestureRecognizer:[[SCTouchDetector alloc] initWithTarget:self action:@selector(handleTouchDetected:)]];
+
     self.loadingView.hidden = YES;
     
     self.focusView = [[SCRecorderToolsView alloc] initWithFrame:previewView.bounds];
@@ -352,6 +359,7 @@
 - (void)handleTouchDetected:(SCTouchDetector*)touchDetector {
     if (touchDetector.state == UIGestureRecognizerStateBegan) {
         _ghostImageView.hidden = YES;
+        // 按下才录制，放开则停止录制
         [_recorder record];
     } else if (touchDetector.state == UIGestureRecognizerStateEnded) {
         [_recorder pause];

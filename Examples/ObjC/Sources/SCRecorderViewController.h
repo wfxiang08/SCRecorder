@@ -11,13 +11,19 @@
 
 @interface SCRecorderViewController : UIViewController<SCRecorderDelegate, UIImagePickerControllerDelegate>
 
+
+// 底部的三个按钮：从左到右
 @property (weak, nonatomic) IBOutlet UIView *recordView;
-@property (weak, nonatomic) IBOutlet UIButton *stopButton;
 @property (weak, nonatomic) IBOutlet UIButton *retakeButton;
+@property (weak, nonatomic) IBOutlet UIButton *stopButton;
+
+
 @property (weak, nonatomic) IBOutlet UIView *previewView;
 @property (weak, nonatomic) IBOutlet UIView *loadingView;
 @property (weak, nonatomic) IBOutlet UILabel *timeRecordedLabel;
 @property (weak, nonatomic) IBOutlet UIView *downBar;
+
+// 切换摄像头
 @property (weak, nonatomic) IBOutlet UIButton *switchCameraModeButton;
 @property (weak, nonatomic) IBOutlet UIButton *reverseCamera;
 @property (weak, nonatomic) IBOutlet UIButton *flashModeButton;

@@ -26,5 +26,7 @@
 	<string>Copyright © 2014 rFlex. All rights reserved.</string>
 	<key>NSPrincipalClass</key>
 	<string></string>
+	<key>NSCameraUsageDescription</key>
+	<string>Hello</string>
 </dict>
 </plist>

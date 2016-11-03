@@ -54,12 +54,15 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
     self = [super init];
     
     if (self) {
+        // 创建Queue
         _sessionQueue = dispatch_queue_create("me.corsin.SCRecorder.RecordSession", nil);
         
         dispatch_queue_set_specific(_sessionQueue, kSCRecorderRecordSessionQueueKey, "true", nil);
         dispatch_set_target_queue(_sessionQueue, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0));
         
         _captureSessionPreset = AVCaptureSessionPresetHigh;
+        
+        // 创建previewLayer
         _previewLayer = [[AVCaptureVideoPreviewLayer alloc] init];
         _previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
         _initializeSessionLazily = YES;
@@ -182,6 +185,7 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
     }
 }
 
+#pragma mark - 配置Video的ouput相关
 - (BOOL)_reconfigureSession {
     NSError *newError = nil;
     
@@ -199,6 +203,10 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
         }
         
         if (self.fastRecordMethodEnabled) {
+            // movieOutput
+            // videoOutput
+            // audioOutput之间的关系呢?
+            //
             if (_movieOutput == nil) {
                 _movieOutput = [AVCaptureMovieFileOutput new];
             }
@@ -226,10 +234,13 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
                 [session removeOutput:_movieOutput];
             }
             
+            // 配置: Video的output
             _videoOutputAdded = NO;
             if (self.videoConfiguration.enabled) {
                 if (_videoOutput == nil) {
                     _videoOutput = [[AVCaptureVideoDataOutput alloc] init];
+                    
+                    // 放弃LateFrames
                     _videoOutput.alwaysDiscardsLateVideoFrames = NO;
                     [_videoOutput setSampleBufferDelegate:self queue:_sessionQueue];
                 }
@@ -250,6 +261,7 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
             
             _audioOutputAdded = NO;
             if (self.audioConfiguration.enabled) {
+                // 配置: audio的output
                 if (_audioOutput == nil) {
                     _audioOutput = [[AVCaptureAudioDataOutput alloc] init];
                     [_audioOutput setSampleBufferDelegate:self queue:_sessionQueue];
@@ -314,6 +326,7 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
     
     _previewLayer.session = session;
     
+    // 如何配置Audio和Video呢?
     [self reconfigureVideoInput:YES audioInput:YES];
     
     [self commitConfiguration];
@@ -568,6 +581,9 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
     }
 }
 
+//
+// 获取FrameDuration
+//
 - (CMTime)frameDurationFromConnection:(AVCaptureConnection *)connection {
     AVCaptureDevice *device = [self currentVideoDeviceInput].device;
     
@@ -600,33 +616,48 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
     return _transformFilter;
 }
 
+#pragma mark - 处理VideoSample
 - (void)appendVideoSampleBuffer:(CMSampleBufferRef)sampleBuffer toRecordSession:(SCRecordSession *)recordSession duration:(CMTime)duration connection:(AVCaptureConnection *)connection completion:(void(^)(BOOL success))completion {
+    
+    // 1. 如何处理SampleBuffer呢?
+    // CMSampleBufferRef --> CVPixelBufferRef
+    //                             CVPixelBufferGetWidth
+    //                             CVPixelBufferGetHeight
+    //                       CMSampleBufferGetPresentationTimeStamp
+    //
     CVPixelBufferRef sampleBufferImage = CMSampleBufferGetImageBuffer(sampleBuffer);
     
     size_t bufferWidth = (CGFloat)CVPixelBufferGetWidth(sampleBufferImage);
     size_t bufferHeight = (CGFloat)CVPixelBufferGetHeight(sampleBufferImage);
     
     CMTime time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+    
     SCFilter *filterGroup = _videoConfiguration.filter;
     SCFilter *transformFilter = [self _transformFilterUsingBufferWidth:bufferWidth bufferHeight:bufferHeight mirrored:
                                  _device == AVCaptureDevicePositionFront
                                  ];
     
+    // 2. 如果没有filter, transform, 则直接将: sampleBufferImage添加到: recordSession中
     if (filterGroup == nil && transformFilter == nil) {
         [recordSession appendVideoPixelBuffer:sampleBufferImage atTime:time duration:duration completion:completion];
         return;
     }
     
+    // 能否做到有cache, 减少内存分配
     CVPixelBufferRef pixelBuffer = [recordSession createPixelBuffer];
-    
     if (pixelBuffer == nil) {
         completion(NO);
         return;
     }
     
+    // 3. 通过 CIImage来进行后续的操作
+    // sampleBufferImage --> image -------> image ------> image -----> pixelBuffer
+    //                             filter          filter       render
     CIImage *image = [CIImage imageWithCVPixelBuffer:sampleBufferImage];
     CFTimeInterval seconds = CMTimeGetSeconds(time);
     
+    // 基于CPU的各种操作
+    // 基于GPU的各种操作
     if (transformFilter != nil) {
         image = [transformFilter imageByProcessingImage:image atTime:seconds];
     }
@@ -639,6 +670,7 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
     
     [_context render:image toCVPixelBuffer:pixelBuffer];
     
+    // 4. 处理完毕: pixelBuffer之后，释放内存
     [recordSession appendVideoPixelBuffer:pixelBuffer atTime:time duration:duration completion:^(BOOL success) {
         CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
         
@@ -699,8 +731,11 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
     });
 }
 
+#pragma mark - 处理音视频数据
 - (void)_handleVideoSampleBuffer:(CMSampleBufferRef)sampleBuffer withSession:(SCRecordSession *)recordSession connection:(AVCaptureConnection *)connection {
     if (!recordSession.videoInitializationFailed && !_videoConfiguration.shouldIgnore) {
+        
+        // 初始化Video
         if (!recordSession.videoInitialized) {
             NSError *error = nil;
             NSDictionary *settings = [self.videoConfiguration createAssetWriterOptionsUsingSampleBuffer:sampleBuffer];
@@ -709,6 +744,7 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
             [recordSession initializeVideo:settings formatDescription:formatDescription error:&error];
 //            NSLog(@"INITIALIZED VIDEO");
 
+            // 初始化Video
             id<SCRecorderDelegate> delegate = self.delegate;
             if ([delegate respondsToSelector:@selector(recorder:didInitializeVideoInSession:error:)]) {
                 dispatch_async(dispatch_get_main_queue(), ^{
@@ -717,13 +753,16 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
             }
         }
 
+        // audio
         if (!self.audioEnabledAndReady || recordSession.audioInitialized || recordSession.audioInitializationFailed) {
             [self beginRecordSegmentIfNeeded:recordSession];
 
             if (_isRecording && recordSession.recordSegmentReady) {
+                
                 id<SCRecorderDelegate> delegate = self.delegate;
                 CMTime duration = [self frameDurationFromConnection:connection];
 
+                // 如何获取当前的时间: CACurrentMediaTime
                 double timeToWait = kMinTimeBetweenAppend - (CACurrentMediaTime() - _lastAppendedVideoTime);
 
                 if (timeToWait > 0) {
@@ -731,9 +770,13 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
                     //                                    NSLog(@"Too fast! Waiting %fs", timeToWait);
                     [NSThread sleepForTimeInterval:timeToWait];
                 }
+
                 BOOL isFirstVideoBuffer = !recordSession.currentSegmentHasVideo;
 //                NSLog(@"APPENDING");
-                [self appendVideoSampleBuffer:sampleBuffer toRecordSession:recordSession duration:duration connection:connection completion:^(BOOL success) {
+                
+                [self appendVideoSampleBuffer:sampleBuffer toRecordSession:recordSession
+                                     duration:duration connection:connection
+                                   completion:^(BOOL success) {
                     _lastAppendedVideoTime = CACurrentMediaTime();
                     if (success) {
                         if ([delegate respondsToSelector:@selector(recorder:didAppendVideoSampleBufferInSession:)]) {
@@ -819,7 +862,9 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
     }
 }
 
+#pragma mark - AVCaptureVideoDataOutput(来自Video/Audio的输出数据)
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
+    // Video和Audio使用相同的接口，通过:
     if (captureOutput == _videoOutput) {
         _lastVideoBuffer.sampleBuffer = sampleBuffer;
 //        NSLog(@"VIDEO BUFFER: %fs (%fs)", CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer)), CMTimeGetSeconds(CMSampleBufferGetDuration(sampleBuffer)));
@@ -845,6 +890,7 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
         }
     }
 
+    // 数据写入
     if (!_initializeSessionLazily || _isRecording) {
         SCRecordSession *recordSession = _session;
         if (recordSession != nil) {
@@ -953,6 +999,7 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
 
 - (void)_configureFrontCameraMirroring:(BOOL)videoMirrored {
     AVCaptureConnection *videoConnection = [self videoConnection];
+    // 对其纵轴是镜像
     if ([videoConnection isVideoMirroringSupported]) {
         if ([videoConnection respondsToSelector:@selector(setVideoMirrored:)]) {
             videoConnection.videoMirrored = videoMirrored;
@@ -968,14 +1015,27 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
         if ([mediaType isEqualToString:AVMediaTypeVideo]) {
             NSError *error;
             if ([newDevice lockForConfiguration:&error]) {
+                
+                // 1. 设置focusMode
+                if ([newDevice isFocusModeSupported: AVCaptureFocusModeContinuousAutoFocus]) {
+                    newDevice.focusMode = AVCaptureFocusModeContinuousAutoFocus;
+                }
                 if (newDevice.isSmoothAutoFocusSupported) {
                     newDevice.smoothAutoFocusEnabled = YES;
                 }
-                newDevice.subjectAreaChangeMonitoringEnabled = true;
+                
+                // 这个去掉了？ 为什么Video的相关的东西就好了呢?
+                // newDevice.subjectAreaChangeMonitoringEnabled = true;
                 
                 if (newDevice.isLowLightBoostSupported) {
                     newDevice.automaticallyEnablesLowLightBoostWhenAvailable = YES;
                 }
+                
+                // 2. 设置自动曝光
+                if ([newDevice isExposureModeSupported: AVCaptureExposureModeContinuousAutoExposure]) {
+                    newDevice.exposureMode = AVCaptureExposureModeContinuousAutoExposure;
+                }
+                
                 [newDevice unlockForConfiguration];
             } else {
                 NSLog(@"Failed to configure device: %@", error);
@@ -991,6 +1051,7 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
             newInput = [[AVCaptureDeviceInput alloc] initWithDevice:newDevice error:error];
         }
         
+        // 将Video和Audio添加到Session中
         if (*error == nil) {
             if (currentInput != nil) {
                 [_captureSession removeInput:currentInput];
@@ -1024,6 +1085,7 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
     if (_captureSession != nil) {
         [self beginConfiguration];
         
+        // 配置: Video
         NSError *videoError = nil;
         if (shouldConfigureVideo) {
             [self configureDevice:[self videoDevice] mediaType:AVMediaTypeVideo error:&videoError];
@@ -1033,6 +1095,8 @@ static char* SCRecorderPhotoOptionsContext = "PhotoOptionsContext";
             });
         }
         
+        
+        // 配置: Audio
         NSError *audioError = nil;
         
         if (shouldConfigureAudio) {
