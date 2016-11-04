@@ -172,8 +172,8 @@ static char* LoadedTimeRanges = "LoadedTimeRanges";
 }
 
 - (void)renderVideo:(CFTimeInterval)hostFrameTime {
+    // 如果有合适的数据, 则准备Render
     CMTime outputItemTime = [_videoOutput itemTimeForHostTime:hostFrameTime];
-
     if ([_videoOutput hasNewPixelBufferForItemTime:outputItemTime]) {
 
         SCImageView *renderer = self.SCImageView;
@@ -190,6 +190,7 @@ static char* LoadedTimeRanges = "LoadedTimeRanges";
                 _rendererWasSetup = YES;
             }
 
+            // 获取pixelBuffer, 讲数据设置到:
             CMTime time;
             CVPixelBufferRef pixelBuffer = [_videoOutput copyPixelBufferForItemTime:outputItemTime itemTimeForDisplay:&time];
 
@@ -232,6 +233,7 @@ static char* LoadedTimeRanges = "LoadedTimeRanges";
 
         [self setupVideoOutputToItem:self.currentItem];
 
+        // 和屏幕刷新保持同步
         [_displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
 
         [self suspendDisplay];
@@ -253,8 +255,11 @@ static char* LoadedTimeRanges = "LoadedTimeRanges";
 - (void)setupVideoOutputToItem:(AVPlayerItem *)item {
     if (_displayLink != nil && item != nil && _videoOutput == nil && item.status == AVPlayerItemStatusReadyToPlay) {
         NSDictionary *pixBuffAttributes = @{(id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)};
+        
+        // 创建videoOutput
         _videoOutput = [[AVPlayerItemVideoOutput alloc] initWithPixelBufferAttributes:pixBuffAttributes];
         [_videoOutput setDelegate:self queue:dispatch_get_main_queue()];
+        
         _videoOutput.suppressesPlayerRendering = self.shouldSuppressPlayerRendering;
 
         [item addOutput:_videoOutput];

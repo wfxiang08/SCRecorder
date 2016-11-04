@@ -121,6 +121,7 @@
             case SCContextTypeCoreGraphics:
                 break;
             case SCContextTypeEAGL:
+                // 硬件加速
                 _GLKView = [[GLKView alloc] initWithFrame:self.bounds context:context.EAGLContext];
                 _GLKView.contentScaleFactor = self.contentScaleFactor;
                 _GLKView.delegate = self;
@@ -150,7 +151,10 @@
 - (void)setNeedsDisplay {
     [super setNeedsDisplay];
 
+    //
     [_GLKView setNeedsDisplay];
+    
+    // MTKView 9.0才开始可以使用，暂不考虑
 #if !(TARGET_IPHONE_SIMULATOR)
     [_MTKView setNeedsDisplay];
 #endif
@@ -345,6 +349,7 @@ static CGRect CGRectMultiply(CGRect rect, CGFloat contentScale) {
         glClearColor(0, 0, 0, 0);
         glClear(GL_COLOR_BUFFER_BIT);
 
+        // 获取要Render的图片
         CIImage *image = [self renderedCIImageInRect:rect];
 
         if (image != nil) {

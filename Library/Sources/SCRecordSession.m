@@ -381,7 +381,9 @@ NSString * const SCRecordSessionDocumentDirectory = @"DocumentDirectory";
                                                 (id)kCVPixelBufferHeightKey : [NSNumber numberWithInt:dimensions.height]
                                                     };
         
-        _videoPixelBufferAdaptor = [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:_videoInput sourcePixelBufferAttributes:pixelBufferAttributes];
+        _videoPixelBufferAdaptor = [AVAssetWriterInputPixelBufferAdaptor
+                                    assetWriterInputPixelBufferAdaptorWithAssetWriterInput: _videoInput
+                                                               sourcePixelBufferAttributes: pixelBufferAttributes];
     } @catch (NSException *exception) {
         theError = [SCRecordSession createError:exception.reason];
     }
@@ -658,6 +660,7 @@ NSString * const SCRecordSessionDocumentDirectory = @"DocumentDirectory";
     return outputPixelBuffer;
 }
 
+#pragma mark - 添加音频数据
 - (void)appendAudioSampleBuffer:(CMSampleBufferRef)audioSampleBuffer completion:(void (^)(BOOL))completion {
     [self _startSessionIfNeededAtTime:CMSampleBufferGetPresentationTimeStamp(audioSampleBuffer)];
 
@@ -695,6 +698,7 @@ NSString * const SCRecordSessionDocumentDirectory = @"DocumentDirectory";
     }
 }
 
+#pragma mark - 添加Video数据
 - (void)appendVideoPixelBuffer:(CVPixelBufferRef)videoPixelBuffer atTime:(CMTime)actualBufferTime duration:(CMTime)duration completion:(void (^)(BOOL))completion {
     [self _startSessionIfNeededAtTime:actualBufferTime];
 
